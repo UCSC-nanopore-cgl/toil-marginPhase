@@ -1,0 +1,8 @@
+.idea*
+*.bai
+venv
+*.pyc
+config-toil-marginphase.yaml
+manifest-toil-marginphase.tsv
+*.log
+*.egg-info
