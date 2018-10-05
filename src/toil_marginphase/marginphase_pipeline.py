@@ -42,6 +42,9 @@ def prepare_input(job, sample, config):
     config.contig_name = contig_name
     config.reference_url = reference_url
     config.params_url = params_url
+    if config.intermediate_file_location is not None:
+        config.intermediate_file_location = os.path.join(config.intermediate_file_location, uuid)
+        mkdir_p(config.intermediate_file_location)
     work_dir = job.fileStore.getLocalTempDir()
     start = time.time()
     log(job, "{}".format(datetime.datetime.now()), config.uuid, 'START')
@@ -222,7 +225,10 @@ def run_margin_phase(job, config, chunk_file_id, chunk_info):
     if cpecan_prob_location is not None:
         params.extend(['--singleNuclProbDir', os.path.join("/data", cpecan_prob_location)])
     docker_call(job, config, work_dir, params, config.margin_phase_image, config.margin_phase_tag)
-    os.rename(os.path.join(work_dir, "marginPhase.log"), os.path.join(work_dir, "{}.log".format(chunk_identifier)))
+    log_debug_from_docker(job, os.path.join(work_dir, DOCKER_MARGIN_PHASE_LOG), chunk_identifier, 'margin_phase',
+                          [chunk_location, genome_reference_location])
+    os.rename(os.path.join(work_dir, DOCKER_MARGIN_PHASE_LOG),
+              os.path.join(work_dir, "marginPhase.{}.log".format(chunk_identifier)))
 
     # document output
     log(job, "Output files after marginPhase:", chunk_identifier, 'run_margin_phase')
@@ -312,26 +318,29 @@ def run_margin_phase__run_cpecan_alignment(job, config, chunk_identifier, work_d
 
     # build cPecan args
     out_dir_name = "cPecan_out"
-    params = [['python', '/opt/cPecan/marginPhaseIntegration.py',
+    params = [
                '--ref', os.path.join("/data", reference_filename),
                '--alignment_file', os.path.join("/data", alignment_filename),
                '--workdir_directory', '/data/tmp',
                '--output_directory', os.path.join("/data", out_dir_name),
-               '--realign_exe', '/opt/sonLib/bin/cPecanRealign',
                '--validate',
-               '--threads', str(job.cores) #is there a better way to read current allotted toil cores?
-              ]]
+               '--threads', str(job.cores)
+              ]
     hmm_location = run_margin_phase__infer_cpecan_hmm_location(chunk_identifier)
     if hmm_location is not None: params[0].extend(['--realign_hmm', hmm_location])
-    cpecan_output = docker_call(job, config, work_dir, params, config.cpecan_image, config.cpecan_tag)
-    if DEBUG:
-        log(job, "CPecan output:", chunk_identifier, fcn_identifier)
-        for line in (cpecan_output if type(cpecan_output) == list else cpecan_output.split('\n')):
-            log(job, "\t{}".format(line.strip()), chunk_identifier, fcn_identifier)
+
+    # run cpecan
+    docker_call(job, config, work_dir, params, config.cpecan_image, config.cpecan_tag)
 
     # document output
+    log_debug_from_docker(job, os.path.join(work_dir, DOCKER_CPECAN_LOG), chunk_identifier, fcn_identifier,
+                          [os.path.join(work_dir, alignment_filename), os.path.join(work_dir, reference_filename)])
+    require_docker_file_output(job, config, work_dir, [os.path.join(work_dir, out_dir_name)], fcn_identifier,
+                               log_filename=DOCKER_CPECAN_LOG)
     output_files = glob.glob(os.path.join(work_dir, out_dir_name, "*.tsv".format(chunk_identifier)))
     log(job, "cPecan generated {} output files".format(len(output_files)), chunk_identifier, fcn_identifier)
+    if os.path.isfile(os.path.join(work_dir, DOCKER_CPECAN_LOG)):
+        output_files.append(os.path.join(work_dir, DOCKER_CPECAN_LOG))
 
     # tarball the output and save
     tarball_name = "{}.nuc_pos_prob.tar.gz".format(chunk_identifier)
@@ -781,6 +790,7 @@ def main():
         # Config sanity checks
         require(config.output_dir, 'No output location specified')
         if urlparse(config.output_dir).scheme != "s3":
+            config.output_dir = config.output_dir.replace("file://", "", 1)
             mkdir_p(config.output_dir)
         if not config.output_dir.endswith('/'):
             config.output_dir += '/'
@@ -789,10 +799,13 @@ def main():
         require(config.min_merge_ratio, "Configuration parameter min-merge-ratio is required")
         require(config.min_merge_ratio > .5 and config.min_merge_ratio <= 1,
                 "Configuration parameter min-merge-ratio must be in range (.5,1]")
-        if config.save_intermediate_files != True or urlparse(config.output_dir).scheme == "s3":
+
+        if 'save_intermediate_files' not in config or not config.save_intermediate_files:
             config.intermediate_file_location = None
+        elif urlparse(config.output_dir).scheme == "s3":
+            raise UserError("Config parameter 'save_intermediate_files' cannot be used with s3 output directory")
         else:
-            intermediate_location = os.path.join(config.output_dir, "intermediate")
+            intermediate_location = os.path.join(config.output_dir, "intermediate", datetime.datetime.now().strftime("%Y%m%d_%H%M%S"))
             mkdir_p(intermediate_location)
             config.intermediate_file_location = intermediate_location
         if "margin_phase_image" not in config or len(config.margin_phase_image) == 0:

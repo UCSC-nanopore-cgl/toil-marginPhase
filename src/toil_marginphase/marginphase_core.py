@@ -21,10 +21,14 @@ DEFAULT_MANIFEST_NAME = 'manifest-toil-marginphase.tsv'
 # docker images
 DOCKER_SAMTOOLS_IMG = "quay.io/ucsc_cgl/samtools"
 DOCKER_SAMTOOLS_TAG = "1.8--cba1ddbca3e1ab94813b58e40e56ab87a59f1997"
+
 DOCKER_MARGIN_PHASE_IMG_DEFAULT = "tpesout/margin_phase"
 DOCKER_MARGIN_PHASE_TAG_DEFAULT = "latest"
+DOCKER_MARGIN_PHASE_LOG = "marginPhase.log"
+
 DOCKER_CPECAN_IMG_DEFAULT = "tpesout/cpecan"
 DOCKER_CPECAN_TAG_DEFAULT = "latest"
+DOCKER_CPECAN_LOG = "cPecan.log"
 
 # resource
 MP_CPU = 16
@@ -127,7 +131,7 @@ def docker_call(job, config, work_dir, params, image, tag, outfile=None):
 
 def require_docker_file_output(job, config, work_dir, output_filenames, function_id, log_filename=None,
                                max_directory_contents=None, max_log_lines=None):
-    missing_filenames = list(filter(lambda x: not os.path.isfile(os.path.join(work_dir, x)), output_filenames))
+    missing_filenames = list(filter(lambda x: not os.path.exists(os.path.join(work_dir, x)), output_filenames))
     if len(missing_filenames) > 0:
         # document missing
         log(job, "Missing files after docker call: ", config.uuid, function_id)
