@@ -248,10 +248,10 @@ def run_margin_phase(job, config, chunk_file_id, chunk_info):
         if len(cpecan_tarball) == 0:
             log(job, "Found no cpecan output tarball!", chunk_identifier, 'run_margin_phase')
         elif len(cpecan_tarball) > 1:
-            log(job, "Found {} cpecan output tarballs: {}!".format(len(cpecan_tarball), cpecan_tarball),
+            log(job, "Found {} cpecan output tarballs: {}".format(len(cpecan_tarball), cpecan_tarball),
                 chunk_identifier, 'run_margin_phase')
         else:
-            log(job, "Saving cpecan output tarball", chunk_identifier, 'run_margin_phase')
+            log(job, "Saving cpecan output tarball: {}".format(cpecan_tarball[0]), chunk_identifier, 'run_margin_phase')
             output_file_locations.append(cpecan_tarball[0])
 
     # tarball the output and save
@@ -327,7 +327,7 @@ def run_margin_phase__run_cpecan_alignment(job, config, chunk_identifier, work_d
                '--threads', str(job.cores)
               ]
     hmm_location = run_margin_phase__infer_cpecan_hmm_location(chunk_identifier)
-    if hmm_location is not None: params[0].extend(['--realign_hmm', hmm_location])
+    if hmm_location is not None: params.extend(['--realign_hmm', hmm_location])
 
     # run cpecan
     docker_call(job, config, work_dir, params, config.cpecan_image, config.cpecan_tag)
@@ -337,8 +337,11 @@ def run_margin_phase__run_cpecan_alignment(job, config, chunk_identifier, work_d
                           [os.path.join(work_dir, alignment_filename), os.path.join(work_dir, reference_filename)])
     require_docker_file_output(job, config, work_dir, [os.path.join(work_dir, out_dir_name)], fcn_identifier,
                                log_filename=DOCKER_CPECAN_LOG)
-    output_files = glob.glob(os.path.join(work_dir, out_dir_name, "*.tsv".format(chunk_identifier)))
-    log(job, "cPecan generated {} output files".format(len(output_files)), chunk_identifier, fcn_identifier)
+    output_files = glob.glob(os.path.join(work_dir, out_dir_name, "*".format(chunk_identifier)))
+    dir_count = len(list(filter(lambda x: os.path.isdir(x), output_files)))
+    file_count = len(list(filter(lambda x: os.path.isfile(x), output_files)))
+    log(job, "cPecan generated {} output files ({} directory, {} file)".format(len(output_files), dir_count, file_count),
+        chunk_identifier, fcn_identifier)
     if os.path.isfile(os.path.join(work_dir, DOCKER_CPECAN_LOG)):
         output_files.append(os.path.join(work_dir, DOCKER_CPECAN_LOG))
 
