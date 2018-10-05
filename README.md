@@ -6,19 +6,20 @@ This is a Toil workflow designed to run MarginPhase by chunking an input BAM, ru
 
 ### Docker Initialization ###
 
-The Toil script needs a docker image with the marginPhase excecutable to run.
+The Toil script needs two docker images to run: marginPhase (the core of the workflow), and cPecan (for realignment preprocessing)
 
 #### Quick Start ####
 
 ```
-cd marginPhase/toil/docker
-make
+cd docker
+ls | xargs -n1 -I{} bash -c "cd {} &amp;&amp; make"
 ```
 
 #### Under the Hood ####
-So that the identifier used to tag the docker image matches the marginPhase repository's commit hash, the docker image creator copies the current repository into the docker image instead of checking it out from github.  This means that any differences between the current code and what's in the repository will be included (and perhaps be undocumented) in the docker image.
 
-It is recommended that you only publish docker images which were created from an unmodified repository.
+The images are tagged with the current git version of the toil-marginPhase repository (so the state of the docker file can be determined through git history).  As such, it is recommended that you only publish docker images which were created from an unmodified (or fully committed) repository.
+
+To gather memory statistics, there are custom entrypoints which store the executable's output in a log file as well as resource usage debugging information.  These require that the current working directory is mounted onto '/data'
 
 ### Toil ###
 
@@ -33,11 +34,9 @@ It is recommended that you only publish docker images which were created from an
 
 ```
 # environment prep
-cd marginPhase/toil
-virtualenv venv
+virtualenv -p python2 venv
 . venv/bin/activate
-make prepare
-make develop
+pip install -e .
 
 # toil prep
 toil-marginphase generate
@@ -97,41 +96,6 @@ Once chunks have been divided, marginPhase is run on each chunk.  The output (of
 
 ### Merging Chunks ###
 
-While merging chunks, our goal is to find which adjacent chunks should be merged together (all chunks which qualify are merged together), and which ones shouldn't.  When there is not evidence that adjacent chunks have overlap, a new "merged chunk" is created.  For each set of chunks which should be merged, a pair of SAM files and a single VCF is outputted.  Additionally, the output includes a single VCF is which contains the calls from all chunks, whether or not the chunks were merged.
+TODO
 
-1. Initialize
-    * PREV_HAP1_READS, PREV_HAP2_READS are initialized to empty sets.  These are the reads which exist in the boundary overlap positions
-    * Sort CHUNKS by start position
-    * For each chunk, CHUNK_START and CHUNK_END denote the boundaries of the chunk (and do not include CHUNK_MARGIN)
-1. For each CHUNK in CHUNKS
-    1. Get read IDs
-        * CURR_HAP1_READS = {all read IDs which are between CHUNK_START-CHUNK_MARGIN and CHUNK_START+CHUNK_MARGIN for the chunks Haplotype1 SAM file}
-        * CURR_HAP2_READS = {same, except for the chunk's Haplotype2 SAM file}
-    1. Determine read counts
-        * PREV1_CURR1_COUNT = | PREV_HAP1_READS intersection CURR_HAP1_READS |
-        * PREV2_CURR2_COUNT = | PREV_HAP2_READS intersection CURR_HAP2_READS |
-        * PREV1_CURR2_COUNT = | PREV_HAP1_READS intersection CURR_HAP2_READS |
-        * PREV2_CURR1_COUNT = | PREV_HAP2_READS intersection CURR_HAP1_READS |
-        * ALL_READS_COUNT = | (PREV_HAP1_READS union PREV_HAP2_READS) intersection (CURR_HAP1_READS union CURR_HAP2_READS)
-    1. Find ratio supporting overlap cases
-        * We're trying to determine whether the previous Haplotype1 merges with the current Haplotype1 (and prev Hap2 with curr Hap2), or the previous Haplotype1 merges with the current Haplotype2 (and prev Hap2 with curr Hap1).  So in this step we count the total number of read overlaps which back up one of these, then then find the ratio of these as compared to all reads.
-        * SAME_ORDER_COUNT = PREV1_CURR1_COUNT + PREV2_CURR2_COUNT
-        * DIFF_ORDER_COUNT = PREV1_CURR2_COUNT + PREV1_CURR2_COUNT
-        * SAME_ORDER_RATIO = SAME_ORDER_COUNT / ALL_READS_COUNT
-        * DIFF_ORDER_RATIO = DIFF_ORDER_COUNT / ALL_READS_COUNT
-    1. Recommend a merging strategy
-        * Here we use the information from the previous step to recommend whether prev Hap1 merges with curr Hap1 (SAME_ORDERING), whether prev Hap1 merges with curr Hap2 (DIFF_ORDERING), or whether there is not enough evidence to support either (NO_MERGE).
-        * if SAME_ORDER_RATIO >= MERGE_RATIO: recommend SAME_ORDERING
-        * elif DIFF_ORDER_RATIO >= MERGE_RATIO: recommend DIFF_ORDERING
-        * else: recommend NO_MERGE
-    1. Handle merge:
-        * if SAME_ORDERING or DIFF_ORDERING:
-            * Append reads from each the chunk's haplotype SAM to the appropriate haplotype SAM for the current merge. Exclude reads which are in PREV_HAP1_READS or PREV_HAP2_READS
-            * Append vcf calls from the chunks VCF to the VCF for the current merge.  Exclude calls which are not in the chunk boundary positions (without the margins).  If DIFF_ORDERING, reverse the phase.
-        * if NO_MERGE
-            * Create a new MergedHaplotype1, MergedHaplotype2, MergedVCF from the chunks Haplotype1, Haplotype2, and VCF (each new Merged file gets a new index when created)
-        * Append all calls (within the chunk boundary positions) to the FullMergedVCF
-    1. Iterate
-        * PREV_HAP1_READS = {all read IDs which are between CHUNK_END-CHUNK_MARGIN and CHUNK_END+CHUNK_MARGIN for the chunks Haplotype1 SAM file}
-        * PREV_HAP2_READS = {same, except for the chunk's Haplotype2 SAM file}
-
+For now, the code is self-documenting.
