@@ -168,6 +168,7 @@ def prepare_input(job, sample, config):
     merge_job.addFollowOnJobFn(consolidate_output, config, merge_job.rv())
 
     # log
+    log_generic_job_debug(job, config.uuid, 'prepare_input', work_dir=work_dir)
     log_time(job, "prepare_input", start, config.uuid)
 
 
@@ -292,6 +293,7 @@ def run_margin_phase(job, config, chunk_file_id, chunk_info):
             os.rename(os.path.join(work_dir, tarball_name), os.path.join(work_dir, tarball_fail_name))
             copy_files(file_paths=[os.path.join(work_dir, tarball_fail_name)], output_dir=config.intermediate_file_location)
 
+        log_generic_job_debug(job, config.uuid, function, work_dir=work_dir)
         return retry_job.rv()
 
     # if successfull, save output
@@ -301,6 +303,7 @@ def run_margin_phase(job, config, chunk_file_id, chunk_info):
     chunk_info[CI_OUTPUT_FILE_ID] = output_file_id
 
     # log
+    log_generic_job_debug(job, config.uuid, 'run_margin_phase', work_dir=work_dir)
     log_time(job, "run_margin_phase", start, chunk_identifier)
     return chunk_info
 
@@ -505,6 +508,7 @@ def merge_chunks(job, config, chunk_infos):
     # we need to return the input list of chunk infos for consolidation
     chunk_infos.append({CI_OUTPUT_FILE_ID: output_file_id, CI_CHUNK_INDEX: "merged"})
 
+    log_generic_job_debug(job, config.uuid, "merge_chunks", work_dir=work_dir)
     log_time(job, "merge_chunks", start, config.uuid)
     return chunk_infos
 
@@ -558,6 +562,7 @@ def consolidate_output(job, config, chunk_infos):
         copy_files(file_paths=[out_tar], output_dir=config.output_dir)
 
     # log
+    log_generic_job_debug(job, config.uuid, "consolidate_output", work_dir=work_dir)
     log_time(job, "consolidate_output", start, config.uuid)
     log(job, "{}".format(datetime.datetime.now()), uuid, 'END')
 

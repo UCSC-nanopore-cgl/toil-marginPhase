@@ -2,6 +2,7 @@ from __future__ import print_function
 
 import os
 import time
+import subprocess
 
 from toil.lib.docker import apiDockerCall, dockerCall
 from toil_lib import UserError
@@ -32,7 +33,7 @@ DOCKER_CPECAN_LOG = "cPecan.log"
 
 # resource
 MP_CPU = 16
-MP_MEM_BAM_FACTOR = 128 #todo account for learning iterations
+MP_MEM_BAM_FACTOR = 350 #input bam bytes to mem in bytes
 MP_MEM_REF_FACTOR = 2
 MP_DSK_BAM_FACTOR = 8 #input bam chunk, output (in sam fmt), vcf etc
 MP_DSK_CPECAN_FACTOR = 4
@@ -187,6 +188,25 @@ def log_debug_from_docker(job, log_file_location, identifier, function, input_fi
             line = line.strip()
             if line.startswith("DEBUG"):
                 log(job, line, identifier, function)
+
+
+def log_generic_job_debug(job, identifier, function, work_dir=None):
+    # job resource logging
+    log(job, "DEBUG_JOB_CORES:{}".format(job.cores), identifier, function)
+    log(job, "DEBUG_JOB_MEM:{}".format(job.memory), identifier, function)
+    log(job, "DEBUG_JOB_DISK:{}".format(job.disk), identifier, function)
+
+    # workdir logging
+    if work_dir is not None:
+        workdir_abspath = os.path.abspath(work_dir)
+        try:
+            du_line = subprocess.check_output(['du', '-s', workdir_abspath])
+            directory_filesize = du_line.split()[0]
+            log(job, "DEBUG_WORKDIR_FILESIZE:{}:{}".format(directory_filesize, workdir_abspath),
+                identifier, function)
+        except Exception, e:
+            log(job, "Exception ({}) finding size of directory {}: {}".format(type(e), workdir_abspath, e),
+                identifier, function)
 
 
 def log(job, message, identifier=None, function=None):
