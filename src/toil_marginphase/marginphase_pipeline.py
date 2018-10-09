@@ -33,7 +33,7 @@ from marginphase_core import *
 ###########################################################
 
 
-def prepare_input(job, sample, config):
+def prepare_input(job, sample, config, enqueue_consolidation=True):
 
     # job prep
     config = argparse.Namespace(**vars(config))
@@ -165,11 +165,17 @@ def prepare_input(job, sample, config):
 
     # enqueue merging and consolidation job
     merge_job = job.addFollowOnJobFn(merge_chunks, config, returned_tarballs)
-    merge_job.addFollowOnJobFn(consolidate_output, config, merge_job.rv())
+    final_return_value = merge_job.rv()
+    if enqueue_consolidation:
+        consolidation_job = merge_job.addFollowOnJobFn(consolidate_output, config, merge_job.rv())
+        final_return_value = consolidation_job.rv()
 
     # log
     log_generic_job_debug(job, config.uuid, 'prepare_input', work_dir=work_dir)
     log_time(job, "prepare_input", start, config.uuid)
+
+    # return appropriate output
+    return final_return_value
 
 
 def prepare_input__get_bam_read_count(job, work_dir, bam_name):
@@ -565,6 +571,9 @@ def consolidate_output(job, config, chunk_infos):
     log_generic_job_debug(job, config.uuid, "consolidate_output", work_dir=work_dir)
     log_time(job, "consolidate_output", start, config.uuid)
     log(job, "{}".format(datetime.datetime.now()), uuid, 'END')
+
+    # return location (calculated the same whether s3:// or file://
+    return os.path.join(config.output_dir, os.path.basename(out_tar))
 
 
 def _index_bam(job, config, work_dir, bam_filename):
