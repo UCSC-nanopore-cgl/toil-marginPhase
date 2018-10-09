@@ -48,8 +48,8 @@ The AWS configuration described can be modified for different spot market pricin
 ```
 # get workflow configuration
 s3cmd ls s3://path/to/configuration/
-s3cmd get s3://path/to/configuration/$CONFIG.yaml &amp;&amp; mv $CONFIG.yaml config-toil-marginphase.yaml
-s3cmd get s3://path/to/configuration/$MANIFEST.tsv &amp;&amp; mv $MANIFEST.tsv manifest-toil-marginphase.tsv
+s3cmd get s3://path/to/configuration/$CONFIG.yaml && mv $CONFIG.yaml config-toil-marginphase.yaml
+s3cmd get s3://path/to/configuration/$MANIFEST.tsv && mv $MANIFEST.tsv manifest-toil-marginphase.tsv
 
 # run the workflow
 script
@@ -62,5 +62,5 @@ toil-marginphase run --defaultCores 1 --maxMemory 60G --maxCores 8 --defaultPree
 # watch it run
 Ctrl-A d #detach from screen
 exit #leave the script
-export LOG=/opt/toil-marginPhase/toil-marginphase.$JOBSTORE.log &amp;&amp; watch "cat $LOG | grep leader | sed 's/^.*leader://' | grep 'Job ended successfully' | grep --invert-match INFO | wc -l &amp;&amp; echo '----' &amp;&amp; cat $LOG | grep leader | sed 's/^.*leader://' | grep 'Issued job' | grep --invert-match INFO | wc -l &amp;&amp; echo '\n' &amp;&amp; wc -l $LOG &amp;&amp; echo '\n' &amp;&amp; cat $LOG | grep leader | sed 's/^.*leader://' | grep --invert-match leader | tail -42"
+export LOG=/opt/toil-marginPhase/toil-marginphase.$JOBSTORE.log && watch "cat $LOG | grep leader | sed 's/^.*leader://' | grep 'Job ended successfully' | grep --invert-match INFO | wc -l && echo '----' && cat $LOG | grep leader | sed 's/^.*leader://' | grep 'Issued job' | grep --invert-match INFO | wc -l && echo '\n' && wc -l $LOG && echo '\n' && cat $LOG | grep leader | sed 's/^.*leader://' | grep --invert-match leader | tail -42"
 ```
