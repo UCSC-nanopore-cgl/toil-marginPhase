@@ -57,22 +57,36 @@ def prepare_input(job, sample, config, enqueue_consolidation=True):
     config.maxMemory = min(config.maxMemory, int(physicalMemory() * .95))
     #config.disk
 
-    # download references
+    # download references - TOIL_JOBSTORE_PROTOCOL queries are so this function can be imported
+
     #ref fasta
-    download_url(reference_url, work_dir=work_dir)
-    ref_genome_filename = os.path.basename(reference_url)
-    ref_genome_fileid = job.fileStore.writeGlobalFile(os.path.join(work_dir, ref_genome_filename))
-    config.reference_genome_fileid = ref_genome_fileid
+    if reference_url.startswith(TOIL_JOBSTORE_PROTOCOL):
+        ref_genome_fileid = reference_url.replace(TOIL_JOBSTORE_PROTOCOL, '', 1)
+        ref_genome_filename = "{}.reference.{}.fa".format(uuid, contig_name)
+        job.fileStore.readGlobalFile(ref_genome_fileid, os.path.join(work_dir, ref_genome_filename))
+    else:
+        download_url(reference_url, work_dir=work_dir)
+        ref_genome_filename = os.path.basename(reference_url)
+        ref_genome_fileid = job.fileStore.writeGlobalFile(os.path.join(work_dir, ref_genome_filename))
     ref_genome_size = os.stat(os.path.join(work_dir, ref_genome_filename)).st_size
+    config.reference_genome_fileid = ref_genome_fileid
+
     #params
-    download_url(params_url, work_dir=work_dir)
-    params_filename = os.path.basename(params_url)
-    params_fileid = job.fileStore.writeGlobalFile(os.path.join(work_dir, params_filename))
+    if params_url.startswith(TOIL_JOBSTORE_PROTOCOL):
+        params_fileid = params_url.replace(TOIL_JOBSTORE_PROTOCOL, '', 1)
+    else:
+        download_url(params_url, work_dir=work_dir)
+        params_filename = os.path.basename(params_url)
+        params_fileid = job.fileStore.writeGlobalFile(os.path.join(work_dir, params_filename))
     config.params_fileid = params_fileid
 
     # download bam
-    download_url(url, work_dir=work_dir)
-    bam_filename = os.path.basename(url)
+    if url.startswith(TOIL_JOBSTORE_PROTOCOL):
+        bam_filename = "{}.input.{}.bam".format(uuid, contig_name)
+        job.fileStore.readGlobalFile(url.replace(TOIL_JOBSTORE_PROTOCOL, '', 1), os.path.join(work_dir, bam_filename))
+    else:
+        download_url(url, work_dir=work_dir)
+        bam_filename = os.path.basename(url)
     data_bam_location = os.path.join("/data", bam_filename)
     workdir_bam_location = os.path.join(work_dir, bam_filename)
 
@@ -598,19 +612,15 @@ def generate_config():
         # Comments (beginning with #) do not need to be removed. Optional parameters left blank are treated as false.
         ##############################################################################################################
 
-        # Required: Output location of sample. Can be full path to a directory or an s3:// URL
+        # Required: Output location of sample. Can be full path to a directory, a file:// URL, or an s3:// URL
         # Warning: S3 buckets must exist prior to upload or it will fail.
-        # Warning: Do not use "file://" syntax if output directory is local location
-        output-dir: /tmp
+        output-dir: file:///tmp
 
         # Required: Size of each bam partition
         partition-size: 2000000
 
         # Required: Margin to apply on each partition
-        partition-margin: 5000
-
-        # Required: Minimum ratio of reads appearing in cross-chunk boundary to trigger a merge
-        min-merge-ratio: .8
+        partition-margin: 50000
 
         # Optional: Identifier for marginPhase Docker image
         margin-phase-image: tpesout/margin_phase
@@ -628,13 +638,13 @@ def generate_config():
         cpecan-tag: latest
 
         # Optional: URL {scheme} for default FASTA reference
-        default-reference: file://path/to/reference.fa
+        default-reference: file:///path/to/reference.fa
 
         # Optional: Default contig name (must match sample URL's contig and reference fasta)
         default-contig: chr1
 
         # Optional: URL {scheme} for default parameters file
-        default-params: file://path/to/reference.fa
+        default-params: file:///path/to/reference.fa
 
         # Optional: Don't include BAM or SAM in output
         minimal-output: False
@@ -813,9 +823,6 @@ def main():
             config.output_dir += '/'
         require(config.partition_size, "Configuration parameter partition-size is required")
         require(config.partition_margin, "Configuration parameter partition-margin is required")
-        require(config.min_merge_ratio, "Configuration parameter min-merge-ratio is required")
-        require(config.min_merge_ratio > .5 and config.min_merge_ratio <= 1,
-                "Configuration parameter min-merge-ratio must be in range (.5,1]")
 
         if 'save_intermediate_files' not in config or not config.save_intermediate_files:
             config.intermediate_file_location = None

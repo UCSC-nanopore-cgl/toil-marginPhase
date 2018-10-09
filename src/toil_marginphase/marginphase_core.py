@@ -14,6 +14,7 @@ from toil_lib import UserError
 
 # input / output schemes
 SCHEMES = ('http', 'file', 's3', 'ftp')
+TOIL_JOBSTORE_PROTOCOL = 'toil_jobstore://'
 
 # filenames
 DEFAULT_CONFIG_NAME = 'config-toil-marginphase.yaml'
