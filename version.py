@@ -19,5 +19,5 @@ required_versions = {'toil': '==3.17.0',
                      'pyyaml': '>=3.11',
                      'azure': '==2.0',
                      's3am': '==2.0.1',
-                     'mesos.cli': '==1.0.1',
+                     'mesos.cli': '==0.1.5',
                      'pysam': '==0.14.1'}
