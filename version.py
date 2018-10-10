@@ -14,8 +14,10 @@
 
 version = '1.0.0a1'
 
-required_versions = {'toil': '==3.15.0',
+required_versions = {'toil': '==3.17.0',
                      'toil-lib': '==1.1.8',
                      'pyyaml': '>=3.11',
                      'azure': '==2.0',
+                     's3am': '==2.0.1',
+                     'mesos.cli': '==1.0.1',
                      'pysam': '==0.14.1'}
