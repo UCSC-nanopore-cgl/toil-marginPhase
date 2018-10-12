@@ -113,7 +113,7 @@ def prepare_input(job, sample, config, enqueue_consolidation=True):
     chunk_infos = list()
     idx = start_idx
     while idx < end_idx:
-        ci = dict()
+        ci = {CI_UUID: uuid}
         ci[CI_CHUNK_BOUNDARY_START] = idx
         chunk_start = idx - config.partition_margin
         ci[CI_CHUNK_START] = chunk_start
@@ -300,7 +300,7 @@ def run_margin_phase(job, config, chunk_file_id, chunk_info):
             chunk_identifier, 'run_margin_phase')
         log(job, "Failed job log file:", chunk_identifier, 'run_margin_phase')
         log(job, "", chunk_identifier, 'run_margin_phase')
-        with open(os.path.join(work_dir, "{}.log".format(chunk_identifier)), 'r') as input:
+        with open(os.path.join(work_dir, "marginPhase.{}.log".format(chunk_identifier)), 'r') as input:
             for line in input:
                 log(job, "\t\t{}".format(line.strip()), chunk_identifier, 'run_margin_phase')
 
@@ -403,7 +403,7 @@ def merge_chunks(job, config, chunk_infos):
 
     # work directory for tar management
     # output files
-    merged_chunks_directory = os.path.join(work_dir, "merged")
+    merged_chunks_directory = os.path.join(work_dir, ID_MERGED)
     os.mkdir(merged_chunks_directory)
     full_merged_vcf_file = os.path.join(merged_chunks_directory, "{}.merged.vcf".format(config.uuid))
     full_merged_sam_file = os.path.join(merged_chunks_directory, "{}.merged.sam".format(config.uuid))
@@ -526,7 +526,7 @@ def merge_chunks(job, config, chunk_infos):
     tarball_files(tar_name=tarball_name, file_paths=output_file_locations, output_dir=work_dir)
     output_file_id = job.fileStore.writeGlobalFile(os.path.join(work_dir, tarball_name))
     # we need to return the input list of chunk infos for consolidation
-    chunk_infos.append({CI_OUTPUT_FILE_ID: output_file_id, CI_CHUNK_INDEX: "merged"})
+    chunk_infos.append({CI_UUID: config.uuid, CI_OUTPUT_FILE_ID: output_file_id, CI_CHUNK_INDEX: ID_MERGED})
 
     log_generic_job_debug(job, config.uuid, "merge_chunks", work_dir=work_dir)
     log_time(job, "merge_chunks", start, config.uuid)
@@ -558,7 +558,7 @@ def consolidate_output(job, config, chunk_infos):
                             (tarinfo.name.endswith("bam") or
                                 tarinfo.name.endswith("sam") or
                                 tarinfo.name.endswith("bai"))
-                            and "merged" not in tarinfo.name):
+                            and ID_MERGED not in tarinfo.name):
                         log(job, "(Minimal Output) Skipping output file: {}".format(tarinfo.name),
                             uuid, 'consolidate_output')
                         continue
