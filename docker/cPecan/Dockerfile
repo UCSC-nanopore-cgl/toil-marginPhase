@@ -2,7 +2,7 @@ FROM ubuntu:14.04
 MAINTAINER Trevor Pesout, tpesout@ucsc.edu
 
 ENV SONLIB_COMMIT=265d6c510cff90412d88e5ab9945818cfdff6e41
-ENV CPECAN_COMMIT=5029e1c3e795b80b23c3364e26f278d5e330cc97
+ENV CPECAN_COMMIT=9c1523479d1cce29f073608dcd8855c48a1f77ce
 
 # update and install dependencies
 RUN apt-get update && \

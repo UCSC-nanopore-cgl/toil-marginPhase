@@ -248,12 +248,13 @@ def run_margin_phase(job, config, chunk_file_id, chunk_info):
     docker_call(job, config, work_dir, params, config.margin_phase_image, config.margin_phase_tag)
     log_debug_from_docker(job, os.path.join(work_dir, DOCKER_MARGIN_PHASE_LOG), chunk_identifier, 'margin_phase',
                           [chunk_location, genome_reference_location])
-    os.rename(os.path.join(work_dir, DOCKER_MARGIN_PHASE_LOG),
-              os.path.join(work_dir, "marginPhase.{}.log".format(chunk_identifier)))
+    log_location = os.path.join(work_dir, "marginPhase.{}.log".format(chunk_identifier))
+    os.rename(os.path.join(work_dir, DOCKER_MARGIN_PHASE_LOG), log_location)
 
     # document output
     log(job, "Output files after marginPhase:", chunk_identifier, 'run_margin_phase')
     output_file_locations = glob.glob(os.path.join(work_dir, "{}*".format(chunk_identifier)))
+    output_file_locations.append(log_location)
     found_vcf, found_sam = False, False
     for f in output_file_locations:
         log(job, "\t\t{}".format(os.path.basename(f)), chunk_identifier, 'run_margin_phase')
@@ -300,9 +301,9 @@ def run_margin_phase(job, config, chunk_file_id, chunk_info):
             chunk_identifier, 'run_margin_phase')
         log(job, "Failed job log file:", chunk_identifier, 'run_margin_phase')
         log(job, "", chunk_identifier, 'run_margin_phase')
-        with open(os.path.join(work_dir, "marginPhase.{}.log".format(chunk_identifier)), 'r') as input:
+        with open(log_location, 'r') as input:
             for line in input:
-                log(job, "\t\t{}".format(line.strip()), chunk_identifier, 'run_margin_phase')
+                log(job, "\t\t{}".format(line.rstrip()), chunk_identifier, 'run_margin_phase')
 
         # new job
         retry_job = job.addChildJobFn(run_margin_phase, config, chunk_file_id, chunk_info,
@@ -313,7 +314,7 @@ def run_margin_phase(job, config, chunk_file_id, chunk_info):
             os.rename(os.path.join(work_dir, tarball_name), os.path.join(work_dir, tarball_fail_name))
             copy_files(file_paths=[os.path.join(work_dir, tarball_fail_name)], output_dir=config.intermediate_file_location)
 
-        log_generic_job_debug(job, config.uuid, function, work_dir=work_dir)
+        log_generic_job_debug(job, config.uuid, 'run_margin_phase', work_dir=work_dir)
         return retry_job.rv()
 
     # if successfull, save output
