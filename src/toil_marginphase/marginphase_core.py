@@ -14,6 +14,7 @@ from toil_lib import UserError
 
 # input / output schemes
 SCHEMES = ('http', 'file', 's3', 'ftp')
+TOIL_JOBSTORE_PROTOCOL = 'toil_jobstore://'
 
 # filenames
 DEFAULT_CONFIG_NAME = 'config-toil-marginphase.yaml'
@@ -53,6 +54,7 @@ CI_CHUNK_SIZE = "chunk_size" #chunk size in bytes
 CI_REF_FA_SIZE = "ref_fa_size" #chunk size in bytes
 CI_CHUNK_INDEX = "chunk_index" #index of the chunk
 CI_OUTPUT_FILE_ID = "output_file_id"
+CI_UUID = 'uuid' #uuid
 
 # read classification
 CR_BEFORE_START = "before_start"
@@ -87,6 +89,9 @@ RPB_BLOCK_ID = "rpb_bid"
 RPB_READ_START = "rpb_rs"
 RPB_READ_LENGTH = "rpb_rl"
 RPB_IS_HAP1 = "rpb_h1"
+
+# general identifiers
+ID_MERGED = "merged"
 
 # merge actions
 ACTION_INVERT = "invert"

@@ -33,7 +33,7 @@ from marginphase_core import *
 ###########################################################
 
 
-def prepare_input(job, sample, config):
+def prepare_input(job, sample, config, enqueue_consolidation=True):
 
     # job prep
     config = argparse.Namespace(**vars(config))
@@ -57,22 +57,36 @@ def prepare_input(job, sample, config):
     config.maxMemory = min(config.maxMemory, int(physicalMemory() * .95))
     #config.disk
 
-    # download references
+    # download references - TOIL_JOBSTORE_PROTOCOL queries are so this function can be imported
+
     #ref fasta
-    download_url(reference_url, work_dir=work_dir)
-    ref_genome_filename = os.path.basename(reference_url)
-    ref_genome_fileid = job.fileStore.writeGlobalFile(os.path.join(work_dir, ref_genome_filename))
-    config.reference_genome_fileid = ref_genome_fileid
+    if reference_url.startswith(TOIL_JOBSTORE_PROTOCOL):
+        ref_genome_fileid = reference_url.replace(TOIL_JOBSTORE_PROTOCOL, '', 1)
+        ref_genome_filename = "{}.reference.{}.fa".format(uuid, contig_name)
+        job.fileStore.readGlobalFile(ref_genome_fileid, os.path.join(work_dir, ref_genome_filename))
+    else:
+        download_url(reference_url, work_dir=work_dir)
+        ref_genome_filename = os.path.basename(reference_url)
+        ref_genome_fileid = job.fileStore.writeGlobalFile(os.path.join(work_dir, ref_genome_filename))
     ref_genome_size = os.stat(os.path.join(work_dir, ref_genome_filename)).st_size
+    config.reference_genome_fileid = ref_genome_fileid
+
     #params
-    download_url(params_url, work_dir=work_dir)
-    params_filename = os.path.basename(params_url)
-    params_fileid = job.fileStore.writeGlobalFile(os.path.join(work_dir, params_filename))
+    if params_url.startswith(TOIL_JOBSTORE_PROTOCOL):
+        params_fileid = params_url.replace(TOIL_JOBSTORE_PROTOCOL, '', 1)
+    else:
+        download_url(params_url, work_dir=work_dir)
+        params_filename = os.path.basename(params_url)
+        params_fileid = job.fileStore.writeGlobalFile(os.path.join(work_dir, params_filename))
     config.params_fileid = params_fileid
 
     # download bam
-    download_url(url, work_dir=work_dir)
-    bam_filename = os.path.basename(url)
+    if url.startswith(TOIL_JOBSTORE_PROTOCOL):
+        bam_filename = "{}.input.{}.bam".format(uuid, contig_name)
+        job.fileStore.readGlobalFile(url.replace(TOIL_JOBSTORE_PROTOCOL, '', 1), os.path.join(work_dir, bam_filename))
+    else:
+        download_url(url, work_dir=work_dir)
+        bam_filename = os.path.basename(url)
     data_bam_location = os.path.join("/data", bam_filename)
     workdir_bam_location = os.path.join(work_dir, bam_filename)
 
@@ -99,7 +113,7 @@ def prepare_input(job, sample, config):
     chunk_infos = list()
     idx = start_idx
     while idx < end_idx:
-        ci = dict()
+        ci = {CI_UUID: uuid}
         ci[CI_CHUNK_BOUNDARY_START] = idx
         chunk_start = idx - config.partition_margin
         ci[CI_CHUNK_START] = chunk_start
@@ -165,11 +179,17 @@ def prepare_input(job, sample, config):
 
     # enqueue merging and consolidation job
     merge_job = job.addFollowOnJobFn(merge_chunks, config, returned_tarballs)
-    merge_job.addFollowOnJobFn(consolidate_output, config, merge_job.rv())
+    final_return_value = merge_job.rv()
+    if enqueue_consolidation:
+        consolidation_job = merge_job.addFollowOnJobFn(consolidate_output, config, merge_job.rv())
+        final_return_value = consolidation_job.rv()
 
     # log
     log_generic_job_debug(job, config.uuid, 'prepare_input', work_dir=work_dir)
     log_time(job, "prepare_input", start, config.uuid)
+
+    # return appropriate output
+    return final_return_value
 
 
 def prepare_input__get_bam_read_count(job, work_dir, bam_name):
@@ -228,12 +248,13 @@ def run_margin_phase(job, config, chunk_file_id, chunk_info):
     docker_call(job, config, work_dir, params, config.margin_phase_image, config.margin_phase_tag)
     log_debug_from_docker(job, os.path.join(work_dir, DOCKER_MARGIN_PHASE_LOG), chunk_identifier, 'margin_phase',
                           [chunk_location, genome_reference_location])
-    os.rename(os.path.join(work_dir, DOCKER_MARGIN_PHASE_LOG),
-              os.path.join(work_dir, "marginPhase.{}.log".format(chunk_identifier)))
+    log_location = os.path.join(work_dir, "marginPhase.{}.log".format(chunk_identifier))
+    os.rename(os.path.join(work_dir, DOCKER_MARGIN_PHASE_LOG), log_location)
 
     # document output
     log(job, "Output files after marginPhase:", chunk_identifier, 'run_margin_phase')
     output_file_locations = glob.glob(os.path.join(work_dir, "{}*".format(chunk_identifier)))
+    output_file_locations.append(log_location)
     found_vcf, found_sam = False, False
     for f in output_file_locations:
         log(job, "\t\t{}".format(os.path.basename(f)), chunk_identifier, 'run_margin_phase')
@@ -280,9 +301,9 @@ def run_margin_phase(job, config, chunk_file_id, chunk_info):
             chunk_identifier, 'run_margin_phase')
         log(job, "Failed job log file:", chunk_identifier, 'run_margin_phase')
         log(job, "", chunk_identifier, 'run_margin_phase')
-        with open(os.path.join(work_dir, "{}.log".format(chunk_identifier)), 'r') as input:
+        with open(log_location, 'r') as input:
             for line in input:
-                log(job, "\t\t{}".format(line.strip()), chunk_identifier, 'run_margin_phase')
+                log(job, "\t\t{}".format(line.rstrip()), chunk_identifier, 'run_margin_phase')
 
         # new job
         retry_job = job.addChildJobFn(run_margin_phase, config, chunk_file_id, chunk_info,
@@ -293,7 +314,7 @@ def run_margin_phase(job, config, chunk_file_id, chunk_info):
             os.rename(os.path.join(work_dir, tarball_name), os.path.join(work_dir, tarball_fail_name))
             copy_files(file_paths=[os.path.join(work_dir, tarball_fail_name)], output_dir=config.intermediate_file_location)
 
-        log_generic_job_debug(job, config.uuid, function, work_dir=work_dir)
+        log_generic_job_debug(job, config.uuid, 'run_margin_phase', work_dir=work_dir)
         return retry_job.rv()
 
     # if successfull, save output
@@ -383,7 +404,7 @@ def merge_chunks(job, config, chunk_infos):
 
     # work directory for tar management
     # output files
-    merged_chunks_directory = os.path.join(work_dir, "merged")
+    merged_chunks_directory = os.path.join(work_dir, ID_MERGED)
     os.mkdir(merged_chunks_directory)
     full_merged_vcf_file = os.path.join(merged_chunks_directory, "{}.merged.vcf".format(config.uuid))
     full_merged_sam_file = os.path.join(merged_chunks_directory, "{}.merged.sam".format(config.uuid))
@@ -506,7 +527,7 @@ def merge_chunks(job, config, chunk_infos):
     tarball_files(tar_name=tarball_name, file_paths=output_file_locations, output_dir=work_dir)
     output_file_id = job.fileStore.writeGlobalFile(os.path.join(work_dir, tarball_name))
     # we need to return the input list of chunk infos for consolidation
-    chunk_infos.append({CI_OUTPUT_FILE_ID: output_file_id, CI_CHUNK_INDEX: "merged"})
+    chunk_infos.append({CI_UUID: config.uuid, CI_OUTPUT_FILE_ID: output_file_id, CI_CHUNK_INDEX: ID_MERGED})
 
     log_generic_job_debug(job, config.uuid, "merge_chunks", work_dir=work_dir)
     log_time(job, "merge_chunks", start, config.uuid)
@@ -538,7 +559,7 @@ def consolidate_output(job, config, chunk_infos):
                             (tarinfo.name.endswith("bam") or
                                 tarinfo.name.endswith("sam") or
                                 tarinfo.name.endswith("bai"))
-                            and "merged" not in tarinfo.name):
+                            and ID_MERGED not in tarinfo.name):
                         log(job, "(Minimal Output) Skipping output file: {}".format(tarinfo.name),
                             uuid, 'consolidate_output')
                         continue
@@ -566,6 +587,9 @@ def consolidate_output(job, config, chunk_infos):
     log_time(job, "consolidate_output", start, config.uuid)
     log(job, "{}".format(datetime.datetime.now()), uuid, 'END')
 
+    # return location (calculated the same whether s3:// or file://
+    return os.path.join(config.output_dir, os.path.basename(out_tar))
+
 
 def _index_bam(job, config, work_dir, bam_filename):
     docker_call(job, config, work_dir, ["index", os.path.join("/data", bam_filename)],
@@ -589,19 +613,15 @@ def generate_config():
         # Comments (beginning with #) do not need to be removed. Optional parameters left blank are treated as false.
         ##############################################################################################################
 
-        # Required: Output location of sample. Can be full path to a directory or an s3:// URL
+        # Required: Output location of sample. Can be full path to a directory, a file:// URL, or an s3:// URL
         # Warning: S3 buckets must exist prior to upload or it will fail.
-        # Warning: Do not use "file://" syntax if output directory is local location
-        output-dir: /tmp
+        output-dir: file:///tmp
 
         # Required: Size of each bam partition
         partition-size: 2000000
 
         # Required: Margin to apply on each partition
-        partition-margin: 5000
-
-        # Required: Minimum ratio of reads appearing in cross-chunk boundary to trigger a merge
-        min-merge-ratio: .8
+        partition-margin: 50000
 
         # Optional: Identifier for marginPhase Docker image
         margin-phase-image: tpesout/margin_phase
@@ -619,13 +639,13 @@ def generate_config():
         cpecan-tag: latest
 
         # Optional: URL {scheme} for default FASTA reference
-        default-reference: file://path/to/reference.fa
+        default-reference: file:///path/to/reference.fa
 
         # Optional: Default contig name (must match sample URL's contig and reference fasta)
         default-contig: chr1
 
         # Optional: URL {scheme} for default parameters file
-        default-params: file://path/to/reference.fa
+        default-params: file:///path/to/reference.fa
 
         # Optional: Don't include BAM or SAM in output
         minimal-output: False
@@ -804,9 +824,6 @@ def main():
             config.output_dir += '/'
         require(config.partition_size, "Configuration parameter partition-size is required")
         require(config.partition_margin, "Configuration parameter partition-margin is required")
-        require(config.min_merge_ratio, "Configuration parameter min-merge-ratio is required")
-        require(config.min_merge_ratio > .5 and config.min_merge_ratio <= 1,
-                "Configuration parameter min-merge-ratio must be in range (.5,1]")
 
         if 'save_intermediate_files' not in config or not config.save_intermediate_files:
             config.intermediate_file_location = None
